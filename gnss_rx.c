@@ -27,7 +27,7 @@ struct st_buff
     int16_t *buff_ch2;
     size_t num;
 };
-#define BUFF_QUEUE_LENGTH    2000
+#define BUFF_QUEUE_LENGTH    40
 struct st_buff buff_queue[BUFF_QUEUE_LENGTH];
 uint16_t queue_head = 0;
 uint16_t queue_tail = 0;
@@ -55,14 +55,14 @@ int main(int argc, char* argv[])
     double master_rate = 16e6;
     double rate = 4e6;
     double gain = 32;
-    size_t samps_per_buff = 2000;
+    size_t samps_per_buff = 400000;
     size_t channel[2] = {0,1};
     int n_channels = 1;
 
     // Default control parameter
-    size_t sps = (size_t)rate; //samples per second
-    size_t n_samples = 5 * sps; //samples amount
-    size_t n_discard = 2 * sps; //samples discarded
+    uint64_t sps = (uint64_t)rate; //samples per second
+    uint64_t n_samples = 5 * sps; //samples amount, use uint64_t type for longer sample time
+    uint64_t n_discard = 2 * sps; //samples discarded
     BOOL gps_flag = false; //whether synchronize with GPS time
     BOOL ref_flag = false; //whether use external clock
     BOOL name_flag = false; //whether use time name file
@@ -111,7 +111,8 @@ int main(int argc, char* argv[])
     //----1.Set thread priority
     uhd_error uhd_error_code;
     char uhd_error_str[500];
-    uhd_error_code = uhd_set_thread_priority(uhd_default_thread_priority, true);
+    //uhd_error_code = uhd_set_thread_priority(uhd_default_thread_priority, true);
+    uhd_error_code = uhd_set_thread_priority(1, true);
     if(uhd_error_code)
     {
         DISPLAY_UHD_ERROR(Set thread priority)
@@ -315,11 +316,11 @@ int main(int argc, char* argv[])
     uhd_rx_streamer_max_num_samps(rx_streamer, &max_num_samps);
     printf("Max number of samples per buffer: %d.\n", max_num_samps);
     printf("Number of samples per buffer: %d.\n", samps_per_buff);
-    if(samps_per_buff > max_num_samps)
-    {
-        printf("Number of samples per buffer is larger than maximum!\n");
-        return 1;
-    }
+    //if(samps_per_buff > max_num_samps)
+    //{
+    //    printf("Number of samples per buffer is larger than maximum!\n");
+    //    return 1;
+    //}
 
     //----12.Get current time
     //Reference: https://blog.csdn.net/u012229282/article/details/79598287
@@ -542,14 +543,22 @@ int main(int argc, char* argv[])
     }
 
     //----19.Reveive data
-    size_t num_acc_samps = 0;
+    uint64_t num_acc_samps = 0;
     size_t num_rx_samps = 0;
     int16_t *buffs_ptr[2];
     uhd_rx_metadata_error_code_t md_error_code;
     char md_error_str[500];
     
-    buff_queue[0].buff_ch1 = malloc(2 * sizeof(int16_t) * samps_per_buff);
-    buff_queue[0].buff_ch2 = malloc(2 * sizeof(int16_t) * samps_per_buff);
+    for(int i=0; i<BUFF_QUEUE_LENGTH; i++)
+    {
+        buff_queue[i].buff_ch1 = malloc(2 * sizeof(int16_t) * samps_per_buff);
+        buff_queue[i].buff_ch2 = malloc(2 * sizeof(int16_t) * samps_per_buff);
+        if(buff_queue[i].buff_ch1==NULL || buff_queue[i].buff_ch2==NULL)
+        {
+            printf("Apply for buffer space failed!\n");
+            return 1;
+        }
+    }
     buffs_ptr[0] = buff_queue[0].buff_ch1;
     buffs_ptr[1] = buff_queue[0].buff_ch2;
 
@@ -573,25 +582,14 @@ int main(int argc, char* argv[])
             uhd_rx_metadata_time_spec(md, &full_secs, &frac_secs);
             printf("Receive data at %d, %.12f\n", (int)full_secs, frac_secs);
         }
-        num_acc_samps += num_rx_samps;
+        num_acc_samps += (uint64_t)num_rx_samps;
     }
-
-    free(buff_queue[0].buff_ch1);
-    free(buff_queue[0].buff_ch2);
     num_acc_samps = 0;
 
     while(num_acc_samps < n_samples)
     {
-        // apply for buffer space
-        buff_queue[queue_head].buff_ch1 = malloc(2 * sizeof(int16_t) * samps_per_buff);
-        buff_queue[queue_head].buff_ch2 = malloc(2 * sizeof(int16_t) * samps_per_buff);
         buffs_ptr[0] = buff_queue[queue_head].buff_ch1;
         buffs_ptr[1] = buff_queue[queue_head].buff_ch2;
-        if((buffs_ptr[0]==NULL) || (buffs_ptr[1]==NULL))
-        {
-            printf("Apply for buffer space failed!\n");
-            return 1;
-        }
 
         uhd_error_code = uhd_rx_streamer_recv(rx_streamer, buffs_ptr, samps_per_buff, &md, 1.0, false, &num_rx_samps);
         if(uhd_error_code)
@@ -609,9 +607,9 @@ int main(int argc, char* argv[])
         if((num_acc_samps%sps) == 0)
         {
             uhd_rx_metadata_time_spec(md, &full_secs, &frac_secs);
-            printf("Receive data %4d at %4d, %.12f\n", num_acc_samps/sps+1, (int)full_secs, frac_secs);
+            printf("Receive data %4d at %4d, %.12f\n", (int)(num_acc_samps/sps+1), (int)full_secs, frac_secs);
         }
-        num_acc_samps += num_rx_samps;
+        num_acc_samps += (uint64_t)num_rx_samps;
 
         buff_queue[queue_head].num = num_rx_samps;
         queue_head = (queue_head+1) % BUFF_QUEUE_LENGTH;
@@ -654,6 +652,11 @@ int main(int argc, char* argv[])
     uhd_rx_metadata_free(&md);
     uhd_rx_streamer_free(&rx_streamer);
     uhd_usrp_free(&usrp);
+    for(int i=0; i<BUFF_QUEUE_LENGTH; i++)
+    {
+        free(buff_queue[i].buff_ch1);
+        free(buff_queue[i].buff_ch2);
+    }
 
     //system("pause");
 
@@ -680,8 +683,6 @@ void* write_data(void* n_channels)
                     fflush(fp_ch2);
                 }
             }
-            free(buff_queue[queue_tail].buff_ch1);
-            free(buff_queue[queue_tail].buff_ch2);
             queue_tail = (queue_tail+1) % BUFF_QUEUE_LENGTH;
         }
     }
