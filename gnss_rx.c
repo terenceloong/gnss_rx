@@ -19,20 +19,15 @@
 
 /*------------------------------------------------------------------------*/
 
-void* write_data(void* n_channels);
-
-struct st_buff
-{
-    int16_t *buff_ch1;
-    int16_t *buff_ch2;
-    size_t num;
-};
-#define BUFF_QUEUE_LENGTH    40
-struct st_buff buff_queue[BUFF_QUEUE_LENGTH];
-uint16_t queue_head = 0;
-uint16_t queue_tail = 0;
+void* write_data(void* arg);
 
 sem_t sem;
+
+#define BUFF_LENGTH    50
+int16_t *buff_ch1[BUFF_LENGTH];
+int16_t *buff_ch2[BUFF_LENGTH];
+uint16_t buff_head = 0;
+uint16_t buff_tail = 0;
 
 FILE *fp_ch1 = NULL;
 FILE *fp_ch2 = NULL;
@@ -60,9 +55,8 @@ int main(int argc, char* argv[])
     int n_channels = 1;
 
     // Default control parameter
-    uint64_t sps = (uint64_t)rate; //samples per second
-    uint64_t n_samples = 5 * sps; //samples amount, use uint64_t type for longer sample time
-    uint64_t n_discard = 2 * sps; //samples discarded
+    int t_samples = 5 * 10; //total sample time, unit:0.1s
+    int t_discard = 2 * 10; //samples are discarded, unit:0.1s
     BOOL gps_flag = false; //whether synchronize with GPS time
     BOOL ref_flag = false; //whether use external clock
     BOOL name_flag = false; //whether use time name file
@@ -76,7 +70,7 @@ int main(int argc, char* argv[])
         switch(option)
         {
             case 't': //total sample time
-                n_samples = sps * atoi(optarg);
+                t_samples = atoi(optarg) * 10;
                 break;
             case 'p': //file path
                 strcpy(file_path, optarg);
@@ -112,7 +106,7 @@ int main(int argc, char* argv[])
     uhd_error uhd_error_code;
     char uhd_error_str[500];
     //uhd_error_code = uhd_set_thread_priority(uhd_default_thread_priority, true);
-    uhd_error_code = uhd_set_thread_priority(1, true);
+    uhd_error_code = uhd_set_thread_priority(1, true); //highest priority
     if(uhd_error_code)
     {
         DISPLAY_UHD_ERROR(Set thread priority)
@@ -172,18 +166,20 @@ int main(int argc, char* argv[])
     //----6.Set sample rate
     double rate_a = 0; //actual rate
     /* channel 1 */
-    printf("Setting ch1 RX Rate: %f MHz...\n", rate/1e6);
-    uhd_error_code = uhd_usrp_set_rx_rate(usrp, rate, channel[0]);
-    if(uhd_error_code)
     {
-        DISPLAY_UHD_ERROR(Set ch1 sample rate)
+        printf("Setting ch1 RX Rate: %f MHz...\n", rate/1e6);
+        uhd_error_code = uhd_usrp_set_rx_rate(usrp, rate, channel[0]);
+        if(uhd_error_code)
+        {
+            DISPLAY_UHD_ERROR(Set ch1 sample rate)
+        }
+        uhd_error_code = uhd_usrp_get_rx_rate(usrp, channel[0], &rate_a);
+        if(uhd_error_code)
+        {
+            DISPLAY_UHD_ERROR(Get ch1 sample rate)
+        }
+        printf(" Actual ch1 RX Rate: %f MHz.\n", rate_a/1e6);
     }
-    uhd_error_code = uhd_usrp_get_rx_rate(usrp, channel[0], &rate_a);
-    if(uhd_error_code)
-    {
-        DISPLAY_UHD_ERROR(Get ch1 sample rate)
-    }
-    printf(" Actual ch1 RX Rate: %f MHz.\n", rate_a/1e6);
     /* channel 2 */
     if(n_channels == 2)
     {
@@ -204,18 +200,20 @@ int main(int argc, char* argv[])
     //----7.Set reveive gain
     double gain_a = 0; //actual gain
     /* channel 1 */
-    printf("Setting ch1 RX Gain: %f dB...\n", gain);
-    uhd_error_code = uhd_usrp_set_rx_gain(usrp, gain, channel[0], "");
-    if(uhd_error_code)
     {
-        DISPLAY_UHD_ERROR(Set ch1 reveive gain)
+        printf("Setting ch1 RX Gain: %f dB...\n", gain);
+        uhd_error_code = uhd_usrp_set_rx_gain(usrp, gain, channel[0], "");
+        if(uhd_error_code)
+        {
+            DISPLAY_UHD_ERROR(Set ch1 reveive gain)
+        }
+        uhd_error_code = uhd_usrp_get_rx_gain(usrp, channel[0], "", &gain_a);
+        if(uhd_error_code)
+        {
+            DISPLAY_UHD_ERROR(Get ch1 reveive gain)
+        }
+        printf(" Actual ch1 RX Gain: %f dB.\n", gain_a);
     }
-    uhd_error_code = uhd_usrp_get_rx_gain(usrp, channel[0], "", &gain_a);
-    if(uhd_error_code)
-    {
-        DISPLAY_UHD_ERROR(Get ch1 reveive gain)
-    }
-    printf(" Actual ch1 RX Gain: %f dB.\n", gain_a);
     /* channel 2 */
     if(n_channels == 2)
     {
@@ -237,13 +235,13 @@ int main(int argc, char* argv[])
     uhd_tune_request_t tune_request = 
     {
         .target_freq = freq,
-        .rf_freq_policy = UHD_TUNE_REQUEST_POLICY_AUTO,
+        .rf_freq_policy  = UHD_TUNE_REQUEST_POLICY_AUTO,
         .dsp_freq_policy = UHD_TUNE_REQUEST_POLICY_AUTO
     };
     //uhd_tune_request_t tune_request = 
     //{
     //    .target_freq = freq,
-    //    .rf_freq_policy = UHD_TUNE_REQUEST_POLICY_MANUAL,
+    //    .rf_freq_policy  = UHD_TUNE_REQUEST_POLICY_MANUAL,
     //    .rf_freq = 1575.42e6,
     //    .dsp_freq_policy = UHD_TUNE_REQUEST_POLICY_MANUAL,
     //    .dsp_freq = 0
@@ -251,23 +249,25 @@ int main(int argc, char* argv[])
     uhd_tune_result_t tune_result;
     double freq_a = 0; //actual frequency
     /* channel 1 */
-    printf("Setting ch1 RX frequency: %f MHz...\n", freq/1e6);
-    uhd_error_code = uhd_usrp_set_rx_freq(usrp, &tune_request, channel[0], &tune_result);
-    if(uhd_error_code)
     {
-        DISPLAY_UHD_ERROR(Set ch1 reveive frequency)
+        printf("Setting ch1 RX frequency: %f MHz...\n", freq/1e6);
+        uhd_error_code = uhd_usrp_set_rx_freq(usrp, &tune_request, channel[0], &tune_result);
+        if(uhd_error_code)
+        {
+            DISPLAY_UHD_ERROR(Set ch1 reveive frequency)
+        }
+        uhd_error_code = uhd_usrp_get_rx_freq(usrp, channel[0], &freq_a);
+        if(uhd_error_code)
+        {
+            DISPLAY_UHD_ERROR(Get ch1 reveive frequency)
+        }
+        printf(" Actual ch1 RX frequency: %f MHz.\n", freq_a/1e6);
+        printf("    clipped_rf_freq: %f\n", tune_result.clipped_rf_freq);
+        printf("    target_rf_freq : %f\n", tune_result.target_rf_freq );
+        printf("    actual_rf_freq : %f\n", tune_result.actual_rf_freq );
+        printf("    target_dsp_freq: %f\n", tune_result.target_dsp_freq);
+        printf("    actual_dsp_freq: %f\n", tune_result.actual_dsp_freq);
     }
-    uhd_error_code = uhd_usrp_get_rx_freq(usrp, channel[0], &freq_a);
-    if(uhd_error_code)
-    {
-        DISPLAY_UHD_ERROR(Get ch1 reveive frequency)
-    }
-    printf(" Actual ch1 RX frequency: %f MHz.\n", freq_a/1e6);
-    printf("    clipped_rf_freq: %f\n", tune_result.clipped_rf_freq);
-    printf("    target_rf_freq : %f\n", tune_result.target_rf_freq );
-    printf("    actual_rf_freq : %f\n", tune_result.actual_rf_freq );
-    printf("    target_dsp_freq: %f\n", tune_result.target_dsp_freq);
-    printf("    actual_dsp_freq: %f\n", tune_result.actual_dsp_freq);
     /* channel 2 */
     if(n_channels == 2)
     {
@@ -458,7 +458,7 @@ int main(int argc, char* argv[])
     uhd_stream_cmd_t stream_cmd = 
     {
         //.stream_mode = UHD_STREAM_MODE_NUM_SAMPS_AND_DONE,
-        //.num_samps = n_samples + n_discard,
+        //.num_samps = 4e6,
         .stream_mode = UHD_STREAM_MODE_START_CONTINUOUS,
         .stream_now = false,
         .time_spec_full_secs = (time_t)2.0,
@@ -495,21 +495,23 @@ int main(int argc, char* argv[])
     {
         char file_name[200];
         /* channel 1 */
-        strcpy(file_name, file_path);
-        strcat(file_name, "\\data_");
-        if(name_flag)
         {
-            strcat(file_name, date_str);
-            strcat(file_name, time_str);
+            strcpy(file_name, file_path);
+            strcat(file_name, "\\data_");
+            if(name_flag)
+            {
+                strcat(file_name, date_str);
+                strcat(file_name, time_str);
+            }
+            strcat(file_name, "ch1.dat");
+            fp_ch1 = fopen(file_name, "wb");
+            if(fp_ch1 == NULL)
+            {
+                printf("Create file failed! %s\n", file_name);
+                return 1;
+            }
+            printf("Create file: %s\n", file_name);
         }
-        strcat(file_name, "ch1.dat");
-        fp_ch1 = fopen(file_name, "wb");
-        if(fp_ch1 == NULL)
-        {
-            printf("Create file failed! %s\n", file_name);
-            return 1;
-        }
-        printf("Create file: %s\n", file_name);
         /* channel 2 */
         if(n_channels == 2)
         {
@@ -536,33 +538,36 @@ int main(int argc, char* argv[])
     // reference: https://blog.csdn.net/baidu_35692628/article/details/69487525
     sem_init(&sem, 0, 0);
     pthread_t pt;
-    if(pthread_create(&pt, NULL, write_data, &n_channels))
+    int thread_para[2];
+    thread_para[0] = n_channels;
+    thread_para[1] = samps_per_buff;
+    if(pthread_create(&pt, NULL, write_data, (void*)thread_para))
     {
         printf("Create thread failed!\n");
         return 1;
     }
 
     //----19.Reveive data
-    uint64_t num_acc_samps = 0;
+    int t_acc = 0; //unit:0.1s
     size_t num_rx_samps = 0;
     int16_t *buffs_ptr[2];
     uhd_rx_metadata_error_code_t md_error_code;
     char md_error_str[500];
     
-    for(int i=0; i<BUFF_QUEUE_LENGTH; i++)
+    for(int i=0; i<BUFF_LENGTH; i++)
     {
-        buff_queue[i].buff_ch1 = malloc(2 * sizeof(int16_t) * samps_per_buff);
-        buff_queue[i].buff_ch2 = malloc(2 * sizeof(int16_t) * samps_per_buff);
-        if(buff_queue[i].buff_ch1==NULL || buff_queue[i].buff_ch2==NULL)
+        buff_ch1[i] = malloc(2 * sizeof(int16_t) * samps_per_buff);
+        buff_ch2[i] = malloc(2 * sizeof(int16_t) * samps_per_buff);
+        if(buff_ch1[i]==NULL || buff_ch2[i]==NULL)
         {
             printf("Apply for buffer space failed!\n");
             return 1;
         }
     }
-    buffs_ptr[0] = buff_queue[0].buff_ch1;
-    buffs_ptr[1] = buff_queue[0].buff_ch2;
+    buffs_ptr[0] = buff_ch1[0];
+    buffs_ptr[1] = buff_ch2[0];
 
-    while(num_acc_samps < n_discard)
+    while(t_acc < t_discard)
     {
         uhd_error_code = uhd_rx_streamer_recv(rx_streamer, buffs_ptr, samps_per_buff, &md, 3.0, false, &num_rx_samps);
         if(uhd_error_code)
@@ -577,19 +582,25 @@ int main(int argc, char* argv[])
             printf("%s\n", md_error_str);
             return 1;
         }
-        if((num_acc_samps%sps) == 0)
+        if(num_rx_samps != samps_per_buff)
+        {
+            printf("Receive number error!\n");
+            return 1;
+        }
+        if((t_acc%10) == 0)
         {
             uhd_rx_metadata_time_spec(md, &full_secs, &frac_secs);
             printf("Receive data at %d, %.12f\n", (int)full_secs, frac_secs);
+            fflush(stdout); //for matlab output
         }
-        num_acc_samps += (uint64_t)num_rx_samps;
+        t_acc += 1;
     }
-    num_acc_samps = 0;
+    t_acc = 0;
 
-    while(num_acc_samps < n_samples)
+    while(t_acc < t_samples)
     {
-        buffs_ptr[0] = buff_queue[queue_head].buff_ch1;
-        buffs_ptr[1] = buff_queue[queue_head].buff_ch2;
+        buffs_ptr[0] = buff_ch1[buff_head];
+        buffs_ptr[1] = buff_ch2[buff_head];
 
         uhd_error_code = uhd_rx_streamer_recv(rx_streamer, buffs_ptr, samps_per_buff, &md, 1.0, false, &num_rx_samps);
         if(uhd_error_code)
@@ -604,15 +615,20 @@ int main(int argc, char* argv[])
             printf("%s\n", md_error_str);
             return 1;
         }
-        if((num_acc_samps%sps) == 0)
+        if(num_rx_samps != samps_per_buff)
+        {
+            printf("Receive number error!\n");
+            return 1;
+        }
+        if((t_acc%10) == 0)
         {
             uhd_rx_metadata_time_spec(md, &full_secs, &frac_secs);
-            printf("Receive data %4d at %4d, %.12f\n", (int)(num_acc_samps/sps+1), (int)full_secs, frac_secs);
+            printf("Receive data %4d at %4d, %.12f\n", (int)(t_acc/10+1), (int)full_secs, frac_secs);
+            fflush(stdout); //for matlab output
         }
-        num_acc_samps += (uint64_t)num_rx_samps;
+        t_acc += 1;
 
-        buff_queue[queue_head].num = num_rx_samps;
-        queue_head = (queue_head+1) % BUFF_QUEUE_LENGTH;
+        buff_head = (buff_head+1) % BUFF_LENGTH;
         sem_post(&sem);
     }
 
@@ -646,16 +662,18 @@ int main(int argc, char* argv[])
             fclose(fp_ch2);
             printf("Close ch2 file.\n");
         }
-        fclose(fp_ch1);
-        printf("Close ch1 file.\n");
+        {
+            fclose(fp_ch1);
+            printf("Close ch1 file.\n");
+        }
     }
     uhd_rx_metadata_free(&md);
     uhd_rx_streamer_free(&rx_streamer);
     uhd_usrp_free(&usrp);
-    for(int i=0; i<BUFF_QUEUE_LENGTH; i++)
+    for(int i=0; i<BUFF_LENGTH; i++)
     {
-        free(buff_queue[i].buff_ch1);
-        free(buff_queue[i].buff_ch2);
+        free(buff_ch1[i]);
+        free(buff_ch2[i]);
     }
 
     //system("pause");
@@ -663,27 +681,35 @@ int main(int argc, char* argv[])
     return 0;
 }
 
-void* write_data(void* n_channels)
+void* write_data(void* arg)
 {
+    int n_channels;
+    size_t samps_per_buff;
+
+    n_channels = *(int*)arg;
+    samps_per_buff = *((size_t*)arg+1);
+    
     while(1)
     {
         sem_wait(&sem);
 
-        if(queue_head == queue_tail)
-            printf("Queue error!\n");
+        if(buff_head == buff_tail)
+            printf("Buff error!\n");
         else
         {
             if(file_path[0])
             {
-                fwrite(buff_queue[queue_tail].buff_ch1, sizeof(int16_t)*2, buff_queue[queue_tail].num, fp_ch1);
-                fflush(fp_ch1);
-                if(*(uint16_t*)n_channels == 2)
                 {
-                    fwrite(buff_queue[queue_tail].buff_ch2, sizeof(int16_t)*2, buff_queue[queue_tail].num, fp_ch2);
+                    fwrite(buff_ch1[buff_tail], sizeof(int16_t)*2, samps_per_buff, fp_ch1);
+                    fflush(fp_ch1);
+                }
+                if(n_channels == 2)
+                {
+                    fwrite(buff_ch2[buff_tail], sizeof(int16_t)*2, samps_per_buff, fp_ch2);
                     fflush(fp_ch2);
                 }
             }
-            queue_tail = (queue_tail+1) % BUFF_QUEUE_LENGTH;
+            buff_tail = (buff_tail+1) % BUFF_LENGTH;
         }
     }
 
