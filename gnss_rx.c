@@ -135,7 +135,7 @@ int main(int argc, char* argv[])
     {
         DISPLAY_UHD_ERROR(Get clock source)
     }
-    printf("Clock source: %s.\n", clock_source);
+    printf("Clock source: %s.\n", clock_source); fflush(stdout);
 
     //----4.Set time source
     char time_source[20];
@@ -152,10 +152,10 @@ int main(int argc, char* argv[])
     {
         DISPLAY_UHD_ERROR(Get time source)
     }
-    printf("Time source: %s.\n", time_source);
+    printf("Time source: %s.\n", time_source); fflush(stdout);
 
     //----5.Set master clock rate
-    printf("Setting Master Clock Rate: %f MHz...\n", master_rate/1e6);
+    printf("Setting Master Clock Rate: %f MHz...\n", master_rate/1e6); fflush(stdout);
     uhd_error_code = uhd_usrp_set_master_clock_rate(usrp, master_rate, 0);
     if(uhd_error_code)
     {
@@ -178,7 +178,7 @@ int main(int argc, char* argv[])
         {
             DISPLAY_UHD_ERROR(Get ch1 sample rate)
         }
-        printf(" Actual ch1 RX Rate: %f MHz.\n", rate_a/1e6);
+        printf(" Actual ch1 RX Rate: %f MHz.\n", rate_a/1e6); fflush(stdout);
     }
     /* channel 2 */
     if(n_channels == 2)
@@ -194,7 +194,7 @@ int main(int argc, char* argv[])
         {
             DISPLAY_UHD_ERROR(Get ch2 sample rate)
         }
-        printf(" Actual ch2 RX Rate: %f MHz.\n", rate_a/1e6);
+        printf(" Actual ch2 RX Rate: %f MHz.\n", rate_a/1e6); fflush(stdout);
     }
 
     //----7.Set reveive gain
@@ -212,7 +212,7 @@ int main(int argc, char* argv[])
         {
             DISPLAY_UHD_ERROR(Get ch1 reveive gain)
         }
-        printf(" Actual ch1 RX Gain: %f dB.\n", gain_a);
+        printf(" Actual ch1 RX Gain: %f dB.\n", gain_a); fflush(stdout);
     }
     /* channel 2 */
     if(n_channels == 2)
@@ -228,7 +228,7 @@ int main(int argc, char* argv[])
         {
             DISPLAY_UHD_ERROR(Get ch2 reveive gain)
         }
-        printf(" Actual ch2 RX Gain: %f dB.\n", gain_a);
+        printf(" Actual ch2 RX Gain: %f dB.\n", gain_a); fflush(stdout);
     }
 
     //----8.Set reveive frequency
@@ -266,7 +266,7 @@ int main(int argc, char* argv[])
         printf("    target_rf_freq : %f\n", tune_result.target_rf_freq );
         printf("    actual_rf_freq : %f\n", tune_result.actual_rf_freq );
         printf("    target_dsp_freq: %f\n", tune_result.target_dsp_freq);
-        printf("    actual_dsp_freq: %f\n", tune_result.actual_dsp_freq);
+        printf("    actual_dsp_freq: %f\n", tune_result.actual_dsp_freq); fflush(stdout);
     }
     /* channel 2 */
     if(n_channels == 2)
@@ -287,7 +287,7 @@ int main(int argc, char* argv[])
         printf("    target_rf_freq : %f\n", tune_result.target_rf_freq );
         printf("    actual_rf_freq : %f\n", tune_result.actual_rf_freq );
         printf("    target_dsp_freq: %f\n", tune_result.target_dsp_freq);
-        printf("    actual_dsp_freq: %f\n", tune_result.actual_dsp_freq);
+        printf("    actual_dsp_freq: %f\n", tune_result.actual_dsp_freq); fflush(stdout);
     }
 
     //----9.Create RX streamer handle
@@ -315,7 +315,7 @@ int main(int argc, char* argv[])
     size_t max_num_samps;
     uhd_rx_streamer_max_num_samps(rx_streamer, &max_num_samps);
     printf("Max number of samples per buffer: %d.\n", max_num_samps);
-    printf("Number of samples per buffer: %d.\n", samps_per_buff);
+    printf("Number of samples per buffer: %d.\n", samps_per_buff); fflush(stdout);
     //if(samps_per_buff > max_num_samps)
     //{
     //    printf("Number of samples per buffer is larger than maximum!\n");
@@ -332,7 +332,7 @@ int main(int argc, char* argv[])
     time(&timep); //get current time in second
     tp = gmtime(&timep); //transform to time struct
     sprintf(date_str, "%4d%02d%02d_", tp->tm_year+1900, tp->tm_mon+1, tp->tm_mday);
-    printf("Host time: %02d-%02d-%02d\n", tp->tm_hour+8, tp->tm_min, tp->tm_sec);
+    printf("Host time: %02d-%02d-%02d\n", tp->tm_hour+8, tp->tm_min, tp->tm_sec); fflush(stdout);
     hour_s = tp->tm_hour + 8;
     min_s = tp->tm_min;
     sec_s = tp->tm_sec + 5; //sample after 5s
@@ -358,10 +358,12 @@ int main(int argc, char* argv[])
         {
             hCom = CreateFile(com, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
             if(hCom == INVALID_HANDLE_VALUE)
-                printf("Open %s failed!\n", com);
+            {
+                printf("Open %s failed!\n", com); fflush(stdout);
+            }
             else
             {
-                printf("Open %s succeeded!\n", com);
+                printf("Open %s succeeded!\n", com); fflush(stdout);
                 com_flag = true;
                 break;
             }
@@ -403,14 +405,14 @@ int main(int argc, char* argv[])
                 {
                     comBuff[wCount] = 0;
                     printf("%s", comBuff);
-                    printf("Count: %d\n", wCount);
+                    printf("Count: %d\n", wCount); fflush(stdout);
                     if(comBuff[0]=='$' && comBuff[3]=='R' && comBuff[4]=='M' && comBuff[5]=='C')
                     {
                         nmea_parse(&parser, comBuff, wCount, &info);
                         if((info.fix==2) || (info.fix==3))
                         {
                             printf("lat: %f, lon: %f\n", info.lat, info.lon);
-                            printf("GPS time: %02d-%02d-%02d\n", info.utc.hour+8, info.utc.min, info.utc.sec);
+                            printf("GPS time: %02d-%02d-%02d\n", info.utc.hour+8, info.utc.min, info.utc.sec); fflush(stdout);
                             hour_s = info.utc.hour + 8;
                             min_s = info.utc.min;
                             sec_s = info.utc.sec + 5;
@@ -444,14 +446,14 @@ int main(int argc, char* argv[])
     {
         DISPLAY_UHD_ERROR(Reset time)
     }
-    printf("Reset time...\n");
+    printf("Reset time...\n"); fflush(stdout);
     Sleep(1000);
     uhd_error_code = uhd_usrp_get_time_last_pps(usrp, 0, &full_secs, &frac_secs);
     if(uhd_error_code)
     {
         DISPLAY_UHD_ERROR(Get time last pps)
     }
-    printf("Time last pps: %d, %.12f\n", (int)full_secs, frac_secs);
+    printf("Time last pps: %d, %.12f\n", (int)full_secs, frac_secs); fflush(stdout);
 
     //----15.Issue stream command
     // num_samps <= 0x0fffffff
@@ -510,7 +512,7 @@ int main(int argc, char* argv[])
                 printf("Create file failed! %s\n", file_name);
                 return 1;
             }
-            printf("Create file: %s\n", file_name);
+            printf("Create file: %s\n", file_name); fflush(stdout);
         }
         /* channel 2 */
         if(n_channels == 2)
@@ -529,7 +531,7 @@ int main(int argc, char* argv[])
                 printf("Create file failed! %s\n", file_name);
                 return 1;
             }
-            printf("Create file: %s\n", file_name);
+            printf("Create file: %s\n", file_name); fflush(stdout);
         }
     }
 
@@ -694,7 +696,9 @@ void* write_data(void* arg)
         sem_wait(&sem);
 
         if(buff_head == buff_tail)
-            printf("Buff error!\n");
+        {
+            printf("Buff error!\n"); fflush(stdout);
+        }
         else
         {
             if(file_path[0])
