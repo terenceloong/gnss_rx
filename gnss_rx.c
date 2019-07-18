@@ -23,7 +23,7 @@ void* write_data(void* arg);
 
 sem_t sem;
 
-#define BUFF_LENGTH    50
+#define BUFF_LENGTH    5
 int16_t *buff_ch1[BUFF_LENGTH];
 int16_t *buff_ch2[BUFF_LENGTH];
 uint16_t buff_head = 0;
@@ -50,13 +50,13 @@ int main(int argc, char* argv[])
     double master_rate = 16e6;
     double rate = 4e6;
     double gain = 32;
-    size_t samps_per_buff = 400000;
+    size_t samps_per_buff = 4000000; //0.1s
     size_t channel[2] = {0,1};
     int n_channels = 1;
 
     // Default control parameter
-    int t_samples = 5 * 10; //total sample time, unit:0.1s
-    int t_discard = 2 * 10; //samples are discarded, unit:0.1s
+    int t_samples = 5 * 1; //total sample time, unit:0.1s
+    int t_discard = 2 * 1; //samples are discarded, unit:0.1s
     BOOL gps_flag = false; //whether synchronize with GPS time
     BOOL ref_flag = false; //whether use external clock
     BOOL name_flag = false; //whether use time name file
@@ -70,7 +70,7 @@ int main(int argc, char* argv[])
         switch(option)
         {
             case 't': //total sample time
-                t_samples = atoi(optarg) * 10;
+                t_samples = atoi(optarg) * 1;
                 break;
             case 'p': //file path
                 strcpy(file_path, optarg);
@@ -586,10 +586,10 @@ int main(int argc, char* argv[])
         }
         if(num_rx_samps != samps_per_buff)
         {
-            printf("Receive number error!\n");
+            printf("Receive number error! %d\n", num_rx_samps);
             return 1;
         }
-        if((t_acc%10) == 0)
+        //if((t_acc%10) == 0)
         {
             uhd_rx_metadata_time_spec(md, &full_secs, &frac_secs);
             printf("Receive data at %d, %.12f\n", (int)full_secs, frac_secs);
@@ -619,13 +619,13 @@ int main(int argc, char* argv[])
         }
         if(num_rx_samps != samps_per_buff)
         {
-            printf("Receive number error!\n");
+            printf("Receive number error! %d\n", num_rx_samps);
             return 1;
         }
-        if((t_acc%10) == 0)
+        //if((t_acc%10) == 0)
         {
             uhd_rx_metadata_time_spec(md, &full_secs, &frac_secs);
-            printf("Receive data %4d at %4d, %.12f\n", (int)(t_acc/10+1), (int)full_secs, frac_secs);
+            printf("Receive data %4d at %4d, %.12f\n", (int)(t_acc+1), (int)full_secs, frac_secs);
             fflush(stdout); //for matlab output
         }
         t_acc += 1;
