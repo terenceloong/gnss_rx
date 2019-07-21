@@ -499,7 +499,7 @@ int main(int argc, char* argv[])
         /* channel 1 */
         {
             strcpy(file_name, file_path);
-            strcat(file_name, "\\data_");
+            strcat(file_name, "\\B210_");
             if(name_flag)
             {
                 strcat(file_name, date_str);
@@ -518,7 +518,7 @@ int main(int argc, char* argv[])
         if(n_channels == 2)
         {
             strcpy(file_name, file_path);
-            strcat(file_name, "\\data_");
+            strcat(file_name, "\\B210_");
             if(name_flag)
             {
                 strcat(file_name, date_str);
